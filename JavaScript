@@ -1,0 +1,331 @@
+// Add these functions to your app object
+
+// Open the bulk export modal
+openBulkExportModal: () => {
+    // Set default dates
+    const today = new Date();
+    const lastMonth = new Date();
+    lastMonth.setMonth(lastMonth.getMonth() - 1);
+    
+    document.getElementById('exportStartDate').value = lastMonth.toISOString().split('T')[0];
+    document.getElementById('exportEndDate').value = today.toISOString().split('T')[0];
+    
+    // Reset form
+    document.getElementById('exportType').value = 'all';
+    document.getElementById('exportFormat').value = 'csv';
+    document.getElementById('exportAllDates').checked = true;
+    document.getElementById('includeCharts').checked = false;
+    document.getElementById('includeInsights').checked = true;
+    document.getElementById('compressFile').checked = false;
+    
+    // Hide custom options initially
+    document.getElementById('customExportOptions').style.display = 'none';
+    
+    // Reset progress
+    document.getElementById('exportProgress').style.display = 'none';
+    document.getElementById('exportProgressBar').style.width = '0%';
+    
+    document.getElementById('bulkExportModal').style.display = 'flex';
+},
+
+// Update export options based on export type
+updateExportOptions: () => {
+    const exportType = document.getElementById('exportType').value;
+    const customOptions = document.getElementById('customExportOptions');
+    
+    if (exportType === 'custom') {
+        customOptions.style.display = 'block';
+    } else {
+        customOptions.style.display = 'none';
+    }
+},
+
+// Toggle date inputs based on "export all dates" checkbox
+toggleDateInputs: () => {
+    const exportAllDates = document.getElementById('exportAllDates').checked;
+    const startDate = document.getElementById('exportStartDate');
+    const endDate = document.getElementById('exportEndDate');
+    
+    startDate.disabled = exportAllDates;
+    endDate.disabled = exportAllDates;
+    
+    if (exportAllDates) {
+        startDate.style.opacity = '0.5';
+        endDate.style.opacity = '0.5';
+    } else {
+        startDate.style.opacity = '1';
+        endDate.style.opacity = '1';
+    }
+},
+
+// Perform the bulk export
+performBulkExport: () => {
+    // Show progress
+    document.getElementById('exportProgress').style.display = 'block';
+    
+    // Get export options
+    const exportType = document.getElementById('exportType').value;
+    const exportFormat = document.getElementById('exportFormat').value;
+    const exportAllDates = document.getElementById('exportAllDates').checked;
+    const includeCharts = document.getElementById('includeCharts').checked;
+    const includeInsights = document.getElementById('includeInsights').checked;
+    const compressFile = document.getElementById('compressFile').checked;
+    
+    // Get date range
+    let startDate, endDate;
+    if (!exportAllDates) {
+        startDate = document.getElementById('exportStartDate').value;
+        endDate = document.getElementById('exportEndDate').value;
+        
+        if (!startDate || !endDate || new Date(startDate) > new Date(endDate)) {
+            app.showToast("Please select a valid date range", "error");
+            return;
+        }
+    }
+    
+    // Determine what data to include
+    let includeDelivery = true;
+    let includeOnline = true;
+    let includeAgents = true;
+    let includeBranches = true;
+    
+    if (exportType === 'delivery') {
+        includeOnline = false;
+        includeAgents = false;
+        includeBranches = false;
+    } else if (exportType === 'online') {
+        includeDelivery = false;
+        includeAgents = false;
+        includeBranches = false;
+    } else if (exportType === 'agents') {
+        includeDelivery = false;
+        includeOnline = false;
+        includeBranches = false;
+    } else if (exportType === 'branches') {
+        includeDelivery = false;
+        includeOnline = false;
+        includeAgents = false;
+    } else if (exportType === 'custom') {
+        includeDelivery = document.getElementById('includeDelivery').checked;
+        includeOnline = document.getElementById('includeOnline').checked;
+        includeAgents = document.getElementById('includeAgents').checked;
+        includeBranches = document.getElementById('includeBranches').checked;
+    }
+    
+    // Update progress
+    document.getElementById('exportStatus').textContent = "Preparing data...";
+    document.getElementById('exportProgressBar').style.width = '20%';
+    
+    // Filter data by date range if needed
+    let deliveryData = app.data.delivery;
+    let onlineData = app.data.online;
+    let agentData = app.data.agents;
+    
+    if (!exportAllDates) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        // For delivery and online data, we need to convert day numbers to dates
+        // This is a simplified approach - in a real app, you'd store actual dates
+        deliveryData = deliveryData.filter(d => {
+            // Assuming day 1 is the first day of the current month
+            const dayDate = new Date(new Date().getFullYear(), new Date().getMonth(), d.day);
+            return dayDate >= start && dayDate <= end;
+        });
+        
+        onlineData = onlineData.filter(d => {
+            const dayDate = new Date(new Date().getFullYear(), new Date().getMonth(), d.day);
+            return dayDate >= start && dayDate <= end;
+        });
+        
+        // Agent data already has dates
+        agentData = agentData.filter(d => {
+            const recordDate = new Date(d.date);
+            return recordDate >= start && recordDate <= end;
+        });
+    }
+    
+    // Update progress
+    document.getElementById('exportStatus').textContent = "Generating export file...";
+    document.getElementById('exportProgressBar').style.width = '50%';
+    
+    // Generate the export based on format
+    setTimeout(() => {
+        if (exportFormat === 'csv') {
+            app.generateBulkCSV({
+                delivery: includeDelivery ? deliveryData : [],
+                online: includeOnline ? onlineData : [],
+                agents: includeAgents ? agentData : [],
+                branches: includeBranches ? BRANCHES : [],
+                includeInsights
+            });
+        } else if (exportFormat === 'excel') {
+            app.generateBulkExcel({
+                delivery: includeDelivery ? deliveryData : [],
+                online: includeOnline ? onlineData : [],
+                agents: includeAgents ? agentData : [],
+                branches: includeBranches ? BRANCHES : [],
+                includeInsights
+            });
+        } else if (exportFormat === 'json') {
+            app.generateBulkJSON({
+                delivery: includeDelivery ? deliveryData : [],
+                online: includeOnline ? onlineData : [],
+                agents: includeAgents ? agentData : [],
+                branches: includeBranches ? BRANCHES : [],
+                agentsList: includeBranches ? AGENTS : [],
+                agentTargets: includeBranches ? AGENT_TARGETS : {},
+                systemConfig: app.systemConfig,
+                includeInsights
+            });
+        } else if (exportFormat === 'pdf') {
+            app.generateBulkPDF({
+                delivery: includeDelivery ? deliveryData : [],
+                online: includeOnline ? onlineData : [],
+                agents: includeAgents ? agentData : [],
+                branches: includeBranches ? BRANCHES : [],
+                includeCharts,
+                includeInsights
+            });
+        }
+        
+        // Update progress
+        document.getElementById('exportStatus').textContent = "Export completed!";
+        document.getElementById('exportProgressBar').style.width = '100%';
+        
+        // Close modal after a delay
+        setTimeout(() => {
+            document.getElementById('bulkExportModal').style.display = 'none';
+            app.showToast("Data exported successfully!");
+        }, 1500);
+    }, 500);
+},
+
+// Generate bulk CSV export
+generateBulkCSV: (data) => {
+    let csvContent = "";
+    let filename = `crispy_chicken_export_${new Date().toISOString().split('T')[0]}`;
+    
+    // Add delivery data if included
+    if (data.delivery && data.delivery.length > 0) {
+        csvContent += "DELIVERY DATA\n";
+        csvContent += "Day,Branch,Sales,Transactions,AVR\n";
+        
+        data.delivery.forEach(d => {
+            csvContent += `${d.day},${d.branch},${d.sales},${d.txn},${d.avr}\n`;
+        });
+        
+        csvContent += "\n";
+    }
+    
+    // Add online data if included
+    if (data.online && data.online.length > 0) {
+        csvContent += "ONLINE DATA\n";
+        csvContent += "Day,Branch,Sales,Transactions,AVR\n";
+        
+        data.online.forEach(d => {
+            csvContent += `${d.day},${d.branch},${d.sales},${d.txn},${d.avr}\n`;
+        });
+        
+        csvContent += "\n";
+    }
+    
+    // Add agent data if included
+    if (data.agents && data.agents.length > 0) {
+        csvContent += "AGENT PERFORMANCE DATA\n";
+        csvContent += "Date,Agent Name,Branch,Orders,Sales,Target,% Achievement,AVR\n";
+        
+        data.agents.forEach(d => {
+            const avr = d.orders > 0 ? (d.sales/d.orders).toFixed(2) : 0;
+            const pct = d.target > 0 ? ((d.sales/d.target)*100).toFixed(1) : 0;
+            csvContent += `${d.date},${d.name},${d.branch},${d.orders},${d.sales},${d.target},${pct}%,${avr}\n`;
+        });
+        
+        csvContent += "\n";
+    }
+    
+    // Add branch information if included
+    if (data.branches && data.branches.length > 0) {
+        csvContent += "BRANCH INFORMATION\n";
+        csvContent += "Branch Name\n";
+        
+        data.branches.forEach(b => {
+            csvContent += `${b}\n`;
+        });
+        
+        csvContent += "\n";
+    }
+    
+    // Add insights if included
+    if (data.includeInsights) {
+        csvContent += "INSIGHTS AND RECOMMENDATIONS\n";
+        csvContent += "This data was exported from Crispy Chicken BI Dashboard on " + new Date().toLocaleDateString() + "\n";
+        csvContent += "For detailed insights, please refer to the Reports section in the dashboard.\n";
+    }
+    
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+},
+
+// Generate bulk Excel export (simplified version)
+generateBulkExcel: (data) => {
+    // In a real implementation, you would use a library like SheetJS
+    // For now, we'll create multiple CSV files and suggest using Excel to open them
+    app.generateBulkCSV(data);
+    
+    // Show a message about Excel format
+    setTimeout(() => {
+        app.showToast("CSV file created. Open with Excel for full functionality.", "info");
+    }, 1000);
+},
+
+// Generate bulk JSON export
+generateBulkJSON: (data) => {
+    const filename = `crispy_chicken_export_${new Date().toISOString().split('T')[0]}.json`;
+    
+    const jsonData = {
+        exportDate: new Date().toISOString(),
+        delivery: data.delivery || [],
+        online: data.online || [],
+        agents: data.agents || [],
+        branches: data.branches || [],
+        agentsList: data.agentsList || [],
+        agentTargets: data.agentTargets || {},
+        systemConfig: data.systemConfig || {},
+        insights: data.includeInsights ? "This data was exported from Crispy Chicken BI Dashboard" : undefined
+    };
+    
+    const dataStr = JSON.stringify(jsonData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+},
+
+// Generate bulk PDF export (simplified version)
+generateBulkPDF: (data) => {
+    // In a real implementation, you would use a library like jsPDF
+    // For now, we'll use the browser's print functionality
+    app.generatePerformanceReport();
+    
+    // Show a message about PDF format
+    setTimeout(() => {
+        app.showToast("Use your browser's print function to save as PDF.", "info");
+    }, 1000);
+},
+
+// Update the existing exportData function to use the new bulk export modal
+exportData: (format) => {
+    // Open the bulk export modal with pre-selected format
+    app.openBulkExportModal();
+    document.getElementById('exportFormat').value = format;
+}
